@@ -20,7 +20,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return STEP_1 
 
 async def LessonsCount(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print(update. )
     context.user_data['Lessons'] = range(1, (int(update.message.text) + 1))
     await update.message.reply_text("введи насколько скороченный урок: ")
     return STEP_2
