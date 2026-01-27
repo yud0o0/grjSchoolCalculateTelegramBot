@@ -14,13 +14,13 @@ logging.getLogger("telegram").setLevel(logging.INFO)
 async def log_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     text = update.message.text
-    # Вывод диалога в лог
     logging.info(f"User {user.first_name} (ID: {user.id}) wrote: {text}")
 
 STEP_1, STEP_2, STEP_3 = range(3)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("введи количество уроков: ")
+    user = update.effective_user
     logging.info(f"bot in chat with User {user.first_name} (ID: {user.id}) wrote: 'введи количество уроков:' ")
     return STEP_1 
 
