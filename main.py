@@ -27,12 +27,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def LessonsCount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['Lessons'] = range(1, (int(update.message.text) + 1))
     await update.message.reply_text("введи насколько скороченный урок: ")
+    user = update.effective_user
     logging.info(f"bot in chat with User {user.first_name} (ID: {user.id}) wrote: 'введи насколько скороченный урок:' ")
     return STEP_2
 
 async def LessonsTime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['LessonTime'] = 45 - int(update.message.text)
     await update.message.reply_text("введи насколько скороченная перемена: ")
+    user = update.effective_user
     logging.info(f"bot in chat with User {user.first_name} (ID: {user.id}) wrote: 'введи насколько скороченная перемена:' ")
     return STEP_3
     
@@ -75,6 +77,7 @@ async def MainCalculate(update: Update, context: ContextTypes.DEFAULT_TYPE):
             EndTime2 = EndTime2Save
             
     await update.message.reply_text(Massage)
+    user = update.effective_user
     logging.info(f"bot in chat with User {user.first_name} (ID: {user.id}) wrote: '{Massage}' ")
     return ConversationHandler.END
 
