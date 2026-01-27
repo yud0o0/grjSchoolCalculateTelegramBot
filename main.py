@@ -1,5 +1,17 @@
+import logging
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ConversationHandler, MessageHandler, CommandHandler, filters, ContextTypes
+
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+
+async def log_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    text = update.message.text
+    # Вывод диалога в лог
+    logging.info(f"User {user.first_name} (ID: {user.id}) wrote: {text}")
 
 STEP_1, STEP_2, STEP_3 = range(3)
 
@@ -8,6 +20,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return STEP_1 
 
 async def LessonsCount(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print(update. )
     context.user_data['Lessons'] = range(1, (int(update.message.text) + 1))
     await update.message.reply_text("введи насколько скороченный урок: ")
     return STEP_2
@@ -73,6 +86,7 @@ if __name__ == '__main__':
         fallbacks=[],
     )
 
-    app.add_handler(conv_handler)
-    print("Бот запущен...")
-    app.run_polling()
+app.add_handler(MessageHandler(filters.TEXT, log_message), group=-1)
+app.add_handler(conv_handler)
+print("Бот запущен...")
+app.run_polling()
