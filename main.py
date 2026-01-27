@@ -7,6 +7,10 @@ logging.basicConfig(
     level=logging.INFO
 )
 
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
+logging.getLogger("telegram").setLevel(logging.INFO)
+
 async def log_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     text = update.message.text
