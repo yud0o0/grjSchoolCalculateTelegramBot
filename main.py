@@ -21,16 +21,19 @@ STEP_1, STEP_2, STEP_3 = range(3)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("введи количество уроков: ")
+    logging.info(f"bot in chat with User {user.first_name} (ID: {user.id}) wrote: 'введи количество уроков:' ")
     return STEP_1 
 
 async def LessonsCount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['Lessons'] = range(1, (int(update.message.text) + 1))
     await update.message.reply_text("введи насколько скороченный урок: ")
+    logging.info(f"bot in chat with User {user.first_name} (ID: {user.id}) wrote: 'введи насколько скороченный урок:' ")
     return STEP_2
 
 async def LessonsTime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['LessonTime'] = 45 - int(update.message.text)
     await update.message.reply_text("введи насколько скороченная перемена: ")
+    logging.info(f"bot in chat with User {user.first_name} (ID: {user.id}) wrote: 'введи насколько скороченная перемена:' ")
     return STEP_3
     
 async def MainCalculate(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -72,6 +75,7 @@ async def MainCalculate(update: Update, context: ContextTypes.DEFAULT_TYPE):
             EndTime2 = EndTime2Save
             
     await update.message.reply_text(Massage)
+    logging.info(f"bot in chat with User {user.first_name} (ID: {user.id}) wrote: '{Massage}' ")
     return ConversationHandler.END
 
 if __name__ == '__main__':
