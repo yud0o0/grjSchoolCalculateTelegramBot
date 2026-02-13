@@ -148,14 +148,14 @@ async def MainCalculate(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 if __name__ == '__main__':
 
-	token = os.getenv("TOKEN")
-	app = ApplicationBuilder().token(token).build()
+	TOKEN = os.getenv("TOKEN")
+	app = ApplicationBuilder().token(TOKEN).build()
 
 	conv_handler = ConversationHandler(
 		entry_points=[
 		CommandHandler('today', today),
 		CommandHandler('tomorrow', tomorrow)
-		 ],
+		],
 		states={
 			STEP_1: [MessageHandler(filters.TEXT & ~filters.COMMAND, SchoolClass)],						STEP_2: [MessageHandler(filters.TEXT & ~filters.COMMAND, LessonsCount)],
 			STEP_3: [MessageHandler(filters.TEXT & ~filters.COMMAND, LessonsTime)],
