@@ -149,6 +149,7 @@ async def MainCalculate(update: Update, context: ContextTypes.DEFAULT_TYPE):
 if __name__ == '__main__':
 
 	TOKEN = os.getenv("TOKEN")
+	print("TOKEN=",TOKEN)
 	app = ApplicationBuilder().token(TOKEN).build()
 
 	conv_handler = ConversationHandler(
