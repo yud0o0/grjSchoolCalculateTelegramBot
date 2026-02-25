@@ -60,11 +60,11 @@ async def start_logic(update: Update, context: ContextTypes.DEFAULT_TYPE, is_tom
         
         wday = sc_data.get(day)
         context.user_data['Lessons'] = len(wday)
-        
-        await SendMessage(update, "Расписание подтянуто. Введи насколько сокращен урок (мин):")
+        await SendMessage(update, "Количество уроков подтянуто из расписания.")
+        await SendMessage(update, "Введи насколько сокращен урок (мин):")
         return STEP_3
     
-    await SendMessage(update, "Введи свой класс (цифра 1-9 или 0 для ручного ввода):")
+    await SendMessage(update, "Введи свой класс:")
     return STEP_1
 
 async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -92,7 +92,7 @@ async def SchoolClass(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         wday = sc_data.get(day)
         context.user_data['Lessons'] = len(wday)
-        await SendMessage(update, f"Уроков в расписании: {len(wday)}. Введи насколько сокращен урок (мин):")
+        await SendMessage(update, f"Уроков в расписании: {len(wday)}. \n Введи насколько сокращен урок (мин):")
         return STEP_3
     else:
         await SendMessage(update, "Введи количество уроков:")
