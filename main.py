@@ -40,16 +40,46 @@ async def SendMessage(update: Update, text: str, markdown=False):
 	else:
 		await update.message.reply_text(text)
 	user = update.effective_user
-	logging.info(f"bot in chat with User {user.first_name} (ID: {user.id}) wrote: '{text}'")
+	chat = update.effective_chat
+	if chat.type in ["group", "supergroup"]:
+		logging.info(f"bot in {chat.type} {chat.title} with User {user.first_name} (ID: {user.id}) wrote: '{text}'")
+	else:
+		logging.info(f"bot in {chat.type} with User {user.first_name} (ID: {user.id}) wrote: '{text}'")
+
+async def start_logic(update: Update, context: ContextTypes.DEFAULT_TYPE, is_tomorrow: bool):
+    context.user_data['day'] = is_tomorrow
+    chat = update.effective_chat
+	
+    if chat.type in ["group", "supergroup"]:
+        first_char = chat.title[0]
+        
+        if first_char.isdigit():
+            school_class = int(first_char)
+            context.user_data['SchoolClass'] = school_class
+            
+            await SendMessage(update, f"Класс {school_class} определен по названию группы.")
+            
+            SC = SCA.get(school_class)
+            day = (dt.datetime.now(tz).weekday() + (1 if is_tomorrow else 0)) % 7
+            if day in [5, 6]: day = 0
+            
+            wday = SC.get(day)
+            context.user_data['Lessons'] = len(wday)
+            
+            await SendMessage(update, "Расписание подтянуто. Введи насколько сокращен урок (мин):")
+            return STEP_3
+        else:
+            await SendMessage(update, "Не смог узнать класс из названия группы. Введи номер класса вручную:")
+            return STEP_1
+    
+    await SendMessage(update, "Введи свой класс:")
+    return STEP_1
 
 async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
-	context.user_data['day']=False
-	await SendMessage(update, "введи свой класс: ")
-	return STEP_1 
+    return await start_logic(update, context, is_tomorrow=False)
+
 async def tomorrow(update: Update, context: ContextTypes.DEFAULT_TYPE):
-	context.user_data['day']=True
-	await SendMessage(update, "введи свой класс: ")
-	return STEP_1 
+    return await start_logic(update, context, is_tomorrow=True)
 	
 async def SchoolClass(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	if not update.message.text.isdigit():
@@ -58,7 +88,7 @@ async def SchoolClass(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	elif int(update.message.text)>9:
 		await SendMessage(update, "нету класса выше 9го, попробуйте ещё раз.")
 		return STEP_1
-	#пока что все классы заптолнены но может понадобится потом оставлю пока False
+	#пока что все классы заполнены но может понадобится потом оставлю пока False
 	elif False: 
 		await SendMessage(update, "WIP, try 0 Class.") 
 		return STEP_1
@@ -71,6 +101,7 @@ async def SchoolClass(update: Update, context: ContextTypes.DEFAULT_TYPE):
 				day=0
 			wday=SC.get(day)
 			context.user_data['Lessons']=len(wday)
+			await SendMessage(update, "подтягиваю количество уроков из расписания класса")
 			await SendMessage(update, "введи насколько скороченный урок: ")
 			return STEP_3
 		else:
