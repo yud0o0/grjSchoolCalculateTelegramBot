@@ -1,78 +1,70 @@
-from schedule import SCA
 import os
+import sys
 import pytz
-import datetime as dt
 import logging
+import asyncio
+import datetime as dt
+from aiohttp import web 
+from schedule import SCA
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ConversationHandler, MessageHandler, CommandHandler, filters, ContextTypes
 
+# --- Настройки ---
 tz = pytz.timezone('Europe/Kyiv')
-
-def lessonname(i, schoolclass, day):
-	SC=SCA.get(schoolclass)
-	wday=SC.get(day)
-	lesson=wday[i-1]
-	return(lesson)
-	
-
-import sys
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO,
     stream=sys.stdout
 )
-
-
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
-logging.getLogger("telegram").setLevel(logging.INFO)
+# --- Вспомогательные функции ---
+def get_lesson_name(i, school_class, day):
+    sc_data = SCA.get(school_class)
+    wday = sc_data.get(day)
+    return wday[i-1]
 
 async def log_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-	user = update.effective_user
-	text = update.message.text
-	logging.info(f"User {user.first_name} (ID: {user.id}) wrote: {text}")
+    if not update.message or not update.message.text: return
+    user = update.effective_user
+    text = update.message.text
+    logging.info(f"User {user.first_name} (ID: {user.id}) wrote: {text}")
 
-STEP_1, STEP_2, STEP_3, STEP_4 = range(4)
 async def SendMessage(update: Update, text: str, markdown=False):
-	if markdown:
-		await update.message.reply_text(text, parse_mode="MarkdownV2")
-	else:
-		await update.message.reply_text(text)
-	user = update.effective_user
-	chat = update.effective_chat
-	if chat.type in ["group", "supergroup"]:
-		logging.info(f"bot in {chat.type} {chat.title} with User {user.first_name} (ID: {user.id}) wrote: '{text}'")
-	else:
-		logging.info(f"bot in {chat.type} with User {user.first_name} (ID: {user.id}) wrote: '{text}'")
+    parse_mode = "MarkdownV2" if markdown else None
+    await update.message.reply_text(text, parse_mode=parse_mode)
+    
+    user = update.effective_user
+    chat = update.effective_chat
+    chat_info = f"{chat.type} '{chat.title}'" if chat.title else chat.type
+    logging.info(f"Bot to {chat_info} (User: {user.first_name}): '{text}'")
+
+# --- Логика бота ---
+STEP_1, STEP_2, STEP_3, STEP_4 = range(4)
 
 async def start_logic(update: Update, context: ContextTypes.DEFAULT_TYPE, is_tomorrow: bool):
     context.user_data['day'] = is_tomorrow
     chat = update.effective_chat
-	
-    if chat.type in ["group", "supergroup"]:
-        first_char = chat.title[0]
-        
-        if first_char.isdigit():
-            school_class = int(first_char)
-            context.user_data['SchoolClass'] = school_class
-            
-            await SendMessage(update, f"Класс {school_class} определен по названию группы.")
-            
-            SC = SCA.get(school_class)
-            day = (dt.datetime.now(tz).weekday() + (1 if is_tomorrow else 0)) % 7
-            if day in [5, 6]: day = 0
-            
-            wday = SC.get(day)
-            context.user_data['Lessons'] = len(wday)
-            
-            await SendMessage(update, "Расписание подтянуто. Введи насколько сокращен урок (мин):")
-            return STEP_3
-        else:
-            await SendMessage(update, "Не смог узнать класс из названия группы. Введи номер класса вручную:")
-            return STEP_1
     
-    await SendMessage(update, "Введи свой класс:")
+    # Если это группа и название начинается с цифры
+    if chat.type in ["group", "supergroup"] and chat.title and chat.title[0].isdigit():
+        school_class = int(chat.title[0])
+        context.user_data['SchoolClass'] = school_class
+        
+        await SendMessage(update, f"Класс {school_class} определен по названию группы.")
+        
+        sc_data = SCA.get(school_class)
+        day = (dt.datetime.now(tz).weekday() + (1 if is_tomorrow else 0)) % 7
+        if day in [5, 6]: day = 0
+        
+        wday = sc_data.get(day)
+        context.user_data['Lessons'] = len(wday)
+        
+        await SendMessage(update, "Расписание подтянуто. Введи насколько сокращен урок (мин):")
+        return STEP_3
+    
+    await SendMessage(update, "Введи свой класс (цифра 1-9 или 0 для ручного ввода):")
     return STEP_1
 
 async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -80,126 +72,125 @@ async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def tomorrow(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await start_logic(update, context, is_tomorrow=True)
-	
+
 async def SchoolClass(update: Update, context: ContextTypes.DEFAULT_TYPE):
-	if not update.message.text.isdigit():
-		await SendMessage(update, "неверный тип данных, попробуйте ещё раз.")
-		return STEP_1
-	elif int(update.message.text)>9:
-		await SendMessage(update, "нету класса выше 9го, попробуйте ещё раз.")
-		return STEP_1
-	#пока что все классы заполнены но может понадобится потом оставлю пока False
-	elif False: 
-		await SendMessage(update, "WIP, try 0 Class.") 
-		return STEP_1
-	else:
-		context.user_data['SchoolClass']=int(update.message.text)
-		if int(update.message.text)!=0:
-			SC=SCA.get(int(update.message.text))
-			day = (dt.datetime.now(tz).weekday() + (1 if context.user_data['day'] else 0)) % 7
-			if day in [5,6]:
-				day=0
-			wday=SC.get(day)
-			context.user_data['Lessons']=len(wday)
-			await SendMessage(update, "подтягиваю количество уроков из расписания класса")
-			await SendMessage(update, "введи насколько скороченный урок: ")
-			return STEP_3
-		else:
-			await SendMessage(update, "введи количество уроков: ")
-			return STEP_2
+    text = update.message.text
+    if not text.isdigit():
+        await SendMessage(update, "Неверный формат. Введи число.")
+        return STEP_1
+    
+    val = int(text)
+    if val > 9:
+        await SendMessage(update, "Нету класса выше 9-го. Попробуй еще раз.")
+        return STEP_1
+    
+    context.user_data['SchoolClass'] = val
+    if val != 0:
+        sc_data = SCA.get(val)
+        day = (dt.datetime.now(tz).weekday() + (1 if context.user_data.get('day') else 0)) % 7
+        if day in [5, 6]: day = 0
+        
+        wday = sc_data.get(day)
+        context.user_data['Lessons'] = len(wday)
+        await SendMessage(update, f"Уроков в расписании: {len(wday)}. Введи насколько сокращен урок (мин):")
+        return STEP_3
+    else:
+        await SendMessage(update, "Введи количество уроков:")
+        return STEP_2
 
 async def LessonsCount(update: Update, context: ContextTypes.DEFAULT_TYPE):
-	if not update.message.text.isdigit():
-		await SendMessage(update, "неверный тип данных, попробуйте ещё раз.")
-		return STEP_2
-	elif int(update.message.text)==0:
-		await SendMessage(update, "извините, но нельзя выбрать 0 уроков, попробуйте ещё раз.")
-		return STEP_2
-	else:
-		context.user_data['Lessons']=int(update.message.text)
-		await SendMessage(update, "введи насколько скороченный урок: ")
-		return STEP_3
+    if not update.message.text.isdigit() or int(update.message.text) == 0:
+        await SendMessage(update, "Введи корректное количество уроков.")
+        return STEP_2
+    context.user_data['Lessons'] = int(update.message.text)
+    await SendMessage(update, "Введи насколько сокращен урок (мин):")
+    return STEP_3
 
 async def LessonsTime(update: Update, context: ContextTypes.DEFAULT_TYPE):
-	if not update.message.text.isdigit():
-		await SendMessage(update, "неверный тип данных, попробуйте ещё раз.")
-		return STEP_3
-	else:
-		context.user_data['LessonTime']=int(update.message.text)
-		await SendMessage(update, "введи насколько скороченная перемена: ")
-		return STEP_4
+    if not update.message.text.isdigit():
+        await SendMessage(update, "Введи число.")
+        return STEP_3
+    context.user_data['LessonTime'] = int(update.message.text)
+    await SendMessage(update, "Введи насколько сокращена перемена (мин):")
+    return STEP_4
 
 async def MainCalculate(update: Update, context: ContextTypes.DEFAULT_TYPE):
-	if not update.message.text.isdigit():
-		await SendMessage(update, "неверный тип данных, попробуйте ещё раз.")
-		return STEP_4
-	UnlessonTime = 10 - int(update.message.text)
-	Lessons = range(1, context.user_data['Lessons'] + 1)
-	LessonTime = 45 - context.user_data['LessonTime']
-	Time = 8 * 60 + 45
-	day = (dt.datetime.now(tz).weekday() + (1 if context.user_data['day'] else 0)) % 7
-	Message = ("\n ```Уроки \n")
-	if day in [5,6]:
-		day=0
-		Message+=("на понедельник:\n")
-	for Lesson in Lessons:
-		if Lesson != 1:
-			if Lesson == 3:
-				Time += UnlessonTime + 5
-			else:
-				Time += UnlessonTime
+    if not update.message.text.isdigit():
+        await SendMessage(update, "Введи число.")
+        return STEP_4
+    
+    un_break = 10 - int(update.message.text)
+    total_lessons = context.user_data['Lessons']
+    lesson_dur = 45 - context.user_data['LessonTime']
+    current_time = 8 * 60 + 45 # 08:45
+    
+    is_tomorrow = context.user_data.get('day', False)
+    day = (dt.datetime.now(tz).weekday() + (1 if is_tomorrow else 0)) % 7
+    if day in [5, 6]: day = 0
+    
+    msg = "```\nУроки " + ("на завтра" if is_tomorrow else "на сегодня") + ":\n"
+    
+    for i in range(1, total_lessons + 1):
+        if i != 1:
+            current_time += (un_break + 5) if i == 3 else un_break
+        
+        start_ts = current_time
+        current_time += lesson_dur
+        end_ts = current_time
+        
+        s_h, s_m = divmod(start_ts, 60)
+        e_h, e_m = divmod(end_ts, 60)
+        
+        l_name = ""
+        if context.user_data['SchoolClass'] != 0:
+            l_name = f") {get_lesson_name(i, context.user_data['SchoolClass'], day)}"
+            
+        msg += f"{i}{l_name} — {s_h:02}:{s_m:02} / {e_h:02}:{e_m:02}\n"
 
-		StartTime = Time
-		Time += LessonTime
-		EndTime = Time
+    msg += "```"
+    await SendMessage(update, msg, True)
+    return ConversationHandler.END
 
-		StartTime1 = int(StartTime / 60)
-		StartTime2 = StartTime - StartTime1 * 60
-		EndTime1 = int(EndTime / 60)
-		EndTime2 = EndTime - EndTime1 * 60
+# --- Веб-сервер для Render ---
+async def handle(request):
+    return web.Response(text="Bot is running!")
 
-		if StartTime2 < 10:
-			StartTime2Save = StartTime2
-			StartTime2 = "0" + str(StartTime2)
-		if EndTime2 < 10:
-			EndTime2Save = EndTime2
-			EndTime2 = "0" + str(EndTime2)
-			
-		if context.user_data['SchoolClass']==0:
-			lessoname=""
-		else:
-			lessoname=")"+lessonname(Lesson, context.user_data['SchoolClass'], day)
-			
-		Message += (f"{Lesson}{lessoname} — S: {StartTime1}:{StartTime2} / E: {EndTime1}:{EndTime2}\n")
+async def main():
+    token = os.getenv("TOKEN")
+    app = ApplicationBuilder().token(token).build()
 
-		if isinstance(StartTime2, str):
-			StartTime2 = StartTime2Save
-		if isinstance(EndTime2, str):
-			EndTime2 = EndTime2Save
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('today', today), CommandHandler('tomorrow', tomorrow)],
+        states={
+            STEP_1: [MessageHandler(filters.TEXT & ~filters.COMMAND, SchoolClass)],
+            STEP_2: [MessageHandler(filters.TEXT & ~filters.COMMAND, LessonsCount)],
+            STEP_3: [MessageHandler(filters.TEXT & ~filters.COMMAND, LessonsTime)],
+            STEP_4: [MessageHandler(filters.TEXT & ~filters.COMMAND, MainCalculate)]
+        },
+        fallbacks=[],
+    )
 
-	Message+=(f"```\n")
-	await SendMessage(update, Message, True)
-	return ConversationHandler.END
+    app.add_handler(MessageHandler(filters.TEXT, log_message), group=-1)
+    app.add_handler(conv_handler)
+
+    # Запуск веб-сервера (костыль для Render Free Tier)
+    server = web.Application()
+    server.router.add_get("/", handle)
+    runner = web.AppRunner(server)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 8080))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+
+    async with app:
+        await app.initialize()
+        await app.start()
+        await app.updater.start_polling()
+        while True:
+            await asyncio.sleep(3600)
 
 if __name__ == '__main__':
-
-	TOKEN = os.getenv("TOKEN")
-	app = ApplicationBuilder().token(TOKEN).build()
-
-	conv_handler = ConversationHandler(
-		entry_points=[
-		CommandHandler('today', today),
-		CommandHandler('tomorrow', tomorrow)
-		],
-		states={
-			STEP_1: [MessageHandler(filters.TEXT & ~filters.COMMAND, SchoolClass)],						STEP_2: [MessageHandler(filters.TEXT & ~filters.COMMAND, LessonsCount)],
-			STEP_3: [MessageHandler(filters.TEXT & ~filters.COMMAND, LessonsTime)],
-			STEP_4: [MessageHandler(filters.TEXT & ~filters.COMMAND, MainCalculate)]
-		},
-		fallbacks=[],
-	)
-
-app.add_handler(MessageHandler(filters.TEXT, log_message), group=-1)
-app.add_handler(conv_handler)
-print("Бот запущен...")
-app.run_polling()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
