@@ -9,7 +9,6 @@ from schedule import SCA
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ConversationHandler, MessageHandler, CommandHandler, filters, ContextTypes
 
-# --- Настройки ---
 tz = pytz.timezone('Europe/Kyiv')
 
 logging.basicConfig(
@@ -19,7 +18,6 @@ logging.basicConfig(
 )
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
-# --- Вспомогательные функции ---
 def get_lesson_name(i, school_class, day):
     sc_data = SCA.get(school_class)
     wday = sc_data.get(day)
@@ -40,14 +38,13 @@ async def SendMessage(update: Update, text: str, markdown=False):
     chat_info = f"{chat.type} '{chat.title}'" if chat.title else chat.type
     logging.info(f"Bot to {chat_info} (User: {user.first_name}): '{text}'")
 
-# --- Логика бота ---
 STEP_1, STEP_2, STEP_3, STEP_4 = range(4)
 
-async def start_logic(update: Update, context: ContextTypes.DEFAULT_TYPE, is_tomorrow: bool):
+async def start_logic(update: Update, context: ContextTypes.DEFAULT_TYPE, is_tomorrow: bool, is_custom: bool):
     context.user_data['day'] = is_tomorrow
+    context.user_data['custom'] = is_custom
     chat = update.effective_chat
     
-    # Если это группа и название начинается с цифры
     if chat.type in ["group", "supergroup"] and chat.title and chat.title[0].isdigit():
         school_class = int(chat.title[0])
         context.user_data['SchoolClass'] = school_class
@@ -60,18 +57,28 @@ async def start_logic(update: Update, context: ContextTypes.DEFAULT_TYPE, is_tom
         
         wday = sc_data.get(day)
         context.user_data['Lessons'] = len(wday)
-        await SendMessage(update, "Количество уроков подтянуто из расписания.")
-        await SendMessage(update, "Введи насколько сокращен урок (мин):")
-        return STEP_3
-    
+        await SendMessage(update, "Количество уроков подтянуто.")
+
+        if is_custom:
+            await SendMessage(update, "Введи насколько сокращен урок (мин):")
+            return STEP_3
+        else:
+            return await MainCalculate(update, context)
+            
     await SendMessage(update, "Введи свой класс:")
     return STEP_1
 
 async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    return await start_logic(update, context, is_tomorrow=False)
+    return await start_logic(update, context, is_tomorrow=False, is_custom=False)
+
+async def ctoday(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await start_logic(update, context, is_tomorrow=False, is_custom=True)
 
 async def tomorrow(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    return await start_logic(update, context, is_tomorrow=True)
+    return await start_logic(update, context, is_tomorrow=True, is_custom=False)
+
+async def ctomorrow(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await start_logic(update, context, is_tomorrow=True, is_custom=True)
 
 async def SchoolClass(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
@@ -92,8 +99,12 @@ async def SchoolClass(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         wday = sc_data.get(day)
         context.user_data['Lessons'] = len(wday)
-        await SendMessage(update, f"Уроков в расписании: {len(wday)}. \n Введи насколько сокращен урок (мин):")
-        return STEP_3
+        await SendMessage(update, "Количество уроков подтянуто из расписания.")
+        if context.user_data['custom']:
+            await SendMessage(update, "Введи насколько сокращен урок (мин):")
+            return STEP_3
+        else:
+            return await MainCalculate(update, context)
     else:
         await SendMessage(update, "Введи количество уроков:")
         return STEP_2
@@ -103,8 +114,11 @@ async def LessonsCount(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await SendMessage(update, "Введи корректное количество уроков.")
         return STEP_2
     context.user_data['Lessons'] = int(update.message.text)
-    await SendMessage(update, "Введи насколько сокращен урок (мин):")
-    return STEP_3
+    if context.user_data['custom']:
+        await SendMessage(update, "Введи насколько сокращен урок (мин):")
+        return STEP_3
+    else:
+        return await MainCalculate(update, context)
 
 async def LessonsTime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.text.isdigit():
@@ -115,14 +129,20 @@ async def LessonsTime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return STEP_4
 
 async def MainCalculate(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.text.isdigit():
+    is_custom = context.user_data['custom']
+    if is_custom and not update.message.text.isdigit():
         await SendMessage(update, "Введи число.")
         return STEP_4
     
-    un_break = 10 - int(update.message.text)
+    if is_custom:
+        un_break = 10 - int(update.message.text)
+        lesson_dur = 45 - context.user_data['LessonTime']
+    else:
+        un_break = 10
+        lesson_dur = 45
+    
     total_lessons = context.user_data['Lessons']
-    lesson_dur = 45 - context.user_data['LessonTime']
-    current_time = 8 * 60 + 45 # 08:45
+    current_time = 8 * 60 + 45 
     
     is_tomorrow = context.user_data.get('day', False)
     day = (dt.datetime.now(tz).weekday() + (1 if is_tomorrow else 0)) % 7
@@ -151,7 +171,6 @@ async def MainCalculate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await SendMessage(update, msg, True)
     return ConversationHandler.END
 
-# --- Веб-сервер для Render ---
 async def handle(request):
     return web.Response(text="Bot is running!")
 
@@ -160,7 +179,7 @@ async def main():
     app = ApplicationBuilder().token(token).build()
 
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('today', today), CommandHandler('tomorrow', tomorrow)],
+        entry_points=[CommandHandler('today', today), CommandHandler('customtoday', ctoday), CommandHandler('tomorrow', tomorrow), CommandHandler('customtomorrow', ctomorrow)],
         states={
             STEP_1: [MessageHandler(filters.TEXT & ~filters.COMMAND, SchoolClass)],
             STEP_2: [MessageHandler(filters.TEXT & ~filters.COMMAND, LessonsCount)],
@@ -173,7 +192,6 @@ async def main():
     app.add_handler(MessageHandler(filters.TEXT, log_message), group=-1)
     app.add_handler(conv_handler)
 
-    # Запуск веб-сервера (костыль для Render Free Tier)
     server = web.Application()
     server.router.add_get("/", handle)
     runner = web.AppRunner(server)
