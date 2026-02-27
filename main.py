@@ -152,7 +152,7 @@ async def MainCalculate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     for i in range(1, total_lessons + 1):
         if i != 1:
-            current_time += (un_break + 5) if i == 3 else un_break
+            current_time += (un_break + 5) if i == 2 and is_custom or i == 4 else  un_break 
         
         start_ts = current_time
         current_time += lesson_dur
